@@ -55,26 +55,35 @@ if st.button("Iniciar Processamento", type="primary"):
                 status_texto.text(f"Consultando MEI {idx + 1} de {total}: {cnpj_limpo}")
 
                 try:
-                    page.goto("https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/", wait_until="networkidle")
-                    page.fill("#cnpj", cnpj_limpo)
+                    # Acessa a página do PGMEI
+                    page.goto("https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/", wait_until="domcontentloaded", timeout=60000)
+                    
+                    # Aguarda o campo de CNPJ aparecer de forma segura (aceita ID #cnpj ou name='cnpj')
+                    page.wait_for_selector("#cnpj, input[name='cnpj']", timeout=15000)
+                    page.fill("#cnpj, input[name='cnpj']", cnpj_limpo)
 
-                    captcha_elem = page.wait_for_selector("[data-sitekey]", timeout=10000)
+                    # Aguarda o reCAPTCHA carregar
+                    captcha_elem = page.wait_for_selector("[data-sitekey]", timeout=15000)
                     sitekey = captcha_elem.get_attribute("data-sitekey")
 
                     res = solver.recaptcha(sitekey=sitekey, url=page.url)
                     token = res["code"]
 
+                    # Insere o token do reCAPTCHA na página
                     page.evaluate(f"""
                         let el = document.getElementById('g-recaptcha-response') || document.querySelector('[name="g-recaptcha-response"]');
                         if (el) {{ el.value = '{token}'; el.innerHTML = '{token}'; }}
                     """)
 
-                    page.click("button[type='submit']")
-                    page.wait_for_selector("text=Emitir Guia de Pagamento (DAS)", timeout=15000)
+                    # Clica no botão de consulta
+                    page.click("button[type='submit'], input[type='submit'], #btnContinuar")
+                    
+                    # Aguarda o painel interno carregar confirmando o sucesso
+                    page.wait_for_selector("text=Emitir Guia de Pagamento (DAS), text=Painel, text=Serviços", timeout=20000)
                     df.at[idx, "Status_Consulta"] = "Consulta Concluída"
 
                 except Exception as err:
-                    df.at[idx, "Status_Consulta"] = f"Erro: {str(err)[:30]}"
+                    df.at[idx, "Status_Consulta"] = f"Erro: {str(err)[:50]}"
 
                 barra_progresso.progress((idx + 1) / total)
                 time.sleep(1)

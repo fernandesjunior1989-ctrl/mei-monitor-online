@@ -40,7 +40,7 @@ if st.button("Gerar Relatório de Auditoria", type="primary"):
         status_texto = st.empty()
 
         for idx, row in df.iterrows():
-            cnpj_limpo = "".join(filter(str.isdigit, str(row["CNPJ"])))
+            cnpj_limpo = "".join(filter(str.isdigit, str(row["CNPJ"]))).zfill(14)
             if not cnpj_limpo or len(cnpj_limpo) != 14:
                 df.at[idx, "Status_Consulta"] = "CNPJ Inválido"
                 continue

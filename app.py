@@ -9,13 +9,11 @@ st.set_page_config(page_title="MEI Monitor — Painel de Acompanhamento e Regula
 st.title("MEI Monitor — Gestão e Fila de Pendências de MEIs")
 st.write("Plataforma integrada de acompanhamento baseada nas consultas oficiais (**consopt**, **PGMEI** e **DASN-SIMEI**).")
 
-# Upload da planilha
 uploaded_file = st.file_uploader("Envie sua planilha de controle contendo os **CNPJs** (.xlsx)", type=["xlsx"])
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file, dtype=str)
     
-    # Identifica coluna de CNPJ
     coluna_cnpj = None
     for col in df.columns:
         if "cnpj" in col.lower():
@@ -112,32 +110,14 @@ if uploaded_file:
                 st.success("Varredura e consolidação concluídas com sucesso!")
 
     if "df_painel" in st.session_state:
-        df_atual = st.session_state["df_painel"]
-        
-        # 5. Painel Consolidado (Indicadores / Kpis)
-        st.markdown("---")
-        st.subheader("📊 Painel Consolidado de Acompanhamento")
-        
-        total_analisados = len(df_atual)
-        regulares = len(df_atual[df_atual["Status Consolidado"].str.contains("REGULAR", na=False)])
-        atencao = len(df_atual[df_atual["Status Consolidado"].str.contains("ATENÇÃO", na=False)])
-        irregulares = len(df_atual[df_atual["Status Consolidado"].str.contains("IRREGULAR", na=False)])
-        nao_analisados = len(df_atual[df_atual["Status Consolidado"].str.contains("NÃO ANALISADO", na=False)])
-        
-        kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
-        kpi1.metric("Total Analisados", total_analisados)
-        kpi2.metric("🟢 Regulares", regulares)
-        kpi3.metric("🟡 Atenção", atencao)
-        kpi4.metric("🔴 Irregulares", irregulares)
-        kpi5.metric("⚫ Não Analisados", nao_analisados)
         
         st.markdown("---")
         st.subheader("📋 Fila de Pendências e Tabela Editável")
         st.write("Ajuste os status abaixo conforme a auditoria realizada nos portais oficiais:")
         
-        # Tabela interativa para gerenciar o status fiscal
+        # Tabela interativa colocada ANTES para que o painel leia as alterações em tempo real
         df_editado = st.data_editor(
-            df_atual,
+            st.session_state["df_painel"],
             use_container_width=True,
             num_rows="fixed",
             column_config={
@@ -149,7 +129,24 @@ if uploaded_file:
             }
         )
         
-        # 7. Relatório Automático / Ação Necessária
+        # Painel Consolidado atualizado dinamicamente com base na tabela editada
+        st.markdown("---")
+        st.subheader("📊 Painel Consolidado de Acompanhamento")
+        
+        total_analisados = len(df_editado)
+        regulares = len(df_editado[df_editado["Status Consolidado"] == "🟢 REGULAR"])
+        atencao = len(df_editado[df_editado["Status Consolidado"] == "🟡 ATENÇÃO"])
+        irregulares = len(df_editado[df_editado["Status Consolidado"] == "🔴 IRREGULAR"])
+        nao_analisados = len(df_editado[df_editado["Status Consolidado"] == "⚫ NÃO ANALISADO"])
+        
+        kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+        kpi1.metric("Total Analisados", total_analisados)
+        kpi2.metric("🟢 Regulares", regulares)
+        kpi3.metric("🟡 Atenção", atencao)
+        kpi4.metric("🔴 Irregulares", irregulares)
+        kpi5.metric("⚫ Não Analisados", nao_analisados)
+        
+        # Relatório Automático / Ação Necessária
         st.markdown("---")
         st.subheader("⚠️ Relatório Operacional — Ação Necessária")
         
@@ -162,7 +159,7 @@ if uploaded_file:
         else:
             st.success("Nenhum MEI com pendência crítica marcada na lista atual!")
 
-        # 🔗 Links Oficiais para Consulta Manual Rápida
+        # Links Oficiais para Consulta Manual Rápida
         st.markdown("---")
         st.subheader("🔗 Atalhos Oficiais para Consulta Manual")
         st.write("Acesse diretamente os portais da Receita Federal citados no fluxo:")
@@ -192,7 +189,6 @@ if uploaded_file:
 
         st.markdown("---")
         
-        # Botão para baixar o relatório final consolidado em Excel
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             df_editado.to_excel(writer, index=False)

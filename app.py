@@ -1,5 +1,5 @@
-importação io
-importação os
+import io
+import os
 subprocesso de importação
 tempo de importação
 pandas de importação como pd

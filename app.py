@@ -6,16 +6,16 @@ import streamlit as st
 
 st.set_page_config(page_title="MEI Monitor Online", page_icon="📊", layout="wide")
 
-st.title("MEI Monitor — Auditoria e Consulta MEI")
-st.write("Envie sua planilha de CNPJs para verificar a situação cadastral, desenquadramento e obter os links diretos para consulta manual.")
+st.title("MEI Monitor — Auditoria e Links de Consulta")
+st.write("Envie sua planilha de CNPJs para auditar o enquadramento e acessar rapidamente os portais de consulta.")
 
 uploaded_file = st.file_uploader("Selecione sua planilha de CNPJs (.xlsx)", type=["xlsx"])
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file, dtype={"CNPJ": str})
     
-    if st.button("Gerar Relatório e Links de Consulta", type="primary"):
-        with st.spinner("Analisando os dados da planilha..."):
+    if st.button("Gerar Relatório com CNPJs e Links", type="primary"):
+        with st.spinner("Processando os dados..."):
             
             resultados = []
             
@@ -30,11 +30,10 @@ if uploaded_file:
                     resultados.append({
                         "Nome da Empresa": nome_empresa,
                         "CNPJ": cnpj_raw,
-                        "Situação Cadastral": "CNPJ Inválido/Incompleto",
-                        "Situação SIMEI (Desenquadramento)": "Inválido",
-                        "DAS em Aberto (Consulta Manual)": "Pendente",
-                        "DASN-SIMEI (Consulta Manual)": "Pendente",
-                        "Link Enquadramento SIMEI": ""
+                        "Situação Cadastral": "CNPJ Inválido",
+                        "SIMEI": "Inválido",
+                        "Portal PGMEI": "Link Oficial",
+                        "Enquadramento MEI": "Link Oficial"
                     })
                     continue
                 
@@ -48,49 +47,42 @@ if uploaded_file:
                     if resp.status_code == 200:
                         dados = resp.json()
                         situacao = dados.get("descricao_situacao_cadastral", "Ativa")
-                        data_sit = dados.get("data_situacao_cadastral", "")
                         opcao_simei = dados.get("opcao_pelo_simei")
                         data_exclusao = dados.get("data_exclusao_do_simei")
                         
-                        # Análise do SIMEI (Desenquadramento)
                         if opcao_simei is True:
-                            status_simei = "Enquadrado como MEI (Ativo)"
+                            status_simei = "Enquadrado (Ativo)"
                         else:
-                            status_simei = "⚠️ DESENQUADRADO DO SIMEI"
+                            status_simei = "⚠️ DESENQUADRADO"
                             
                         if data_exclusao:
-                            status_simei = f"⚠️ Desenquadrado em {data_exclusao}"
+                            status_simei = f"⚠️ Excluído em {data_exclusao}"
                             
-                        link_enquadramento = "https://www8.receita.fazenda.gov.br/SimplesNacional/Servicos/Grupo.aspx?grp=1"
-                        
                         resultados.append({
                             "Nome da Empresa": nome_empresa,
                             "CNPJ": cnpj_fmt,
-                            "Situação Cadastral": f"{situacao} (Desde {data_sit})",
-                            "Situação SIMEI (Desenquadramento)": status_simei,
-                            "DAS em Aberto (Consulta Manual)": "Verificar no PGMEI",
-                            "DASN-SIMEI (Consulta Manual)": "Verificar no Portal",
-                            "Link Enquadramento SIMEI": link_enquadramento
+                            "Situação Cadastral": situacao,
+                            "SIMEI": status_simei,
+                            "Portal PGMEI": "https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/",
+                            "Enquadramento MEI": "https://www8.receita.fazenda.gov.br/SimplesNacional/Servicos/Grupo.aspx?grp=1"
                         })
                     else:
                         resultados.append({
                             "Nome da Empresa": nome_empresa,
                             "CNPJ": cnpj_fmt,
-                            "Situação Cadastral": "Não localizado na Receita Federal",
-                            "Situação SIMEI (Desenquadramento)": "-",
-                            "DAS em Aberto (Consulta Manual)": "-",
-                            "DASN-SIMEI (Consulta Manual)": "-",
-                            "Link Enquadramento SIMEI": ""
+                            "Situação Cadastral": "Não encontrado",
+                            "SIMEI": "-",
+                            "Portal PGMEI": "",
+                            "Enquadramento MEI": ""
                         })
                 except Exception:
                     resultados.append({
                         "Nome da Empresa": nome_empresa,
                         "CNPJ": cnpj_fmt,
                         "Situação Cadastral": "Erro de conexão",
-                        "Situação SIMEI (Desenquadramento)": "-",
-                        "DAS em Aberto (Consulta Manual)": "-",
-                        "DASN-SIMEI (Consulta Manual)": "-",
-                        "Link Enquadramento SIMEI": ""
+                        "SIMEI": "-",
+                        "Portal PGMEI": "",
+                        "Enquadramento MEI": ""
                     })
                 
                 time.sleep(0.2)
@@ -99,45 +91,20 @@ if uploaded_file:
             st.session_state["df_resultado"] = df_resultado
             st.success("Relatório gerado com sucesso!")
 
-    # Exibe o painel e os botões de link manual se o relatório estiver pronto
     if "df_resultado" in st.session_state:
-        st.subheader("📋 Prévia do Relatório de Auditoria")
-        st.dataframe(st.session_state["df_resultado"], use_container_width=True)
+        st.subheader("📋 Tabela de Empresas e Links Oficiais")
+        st.write("Copie o CNPJ da empresa desejada e clique nos links oficiais para consulta:")
         
-        st.markdown("---")
-        st.subheader("🔗 Links Rápidos para Consulta Manual")
-        st.write("Utilize os botões abaixo para acessar os portais oficiais da Receita Federal:")
+        # Exibe a tabela interativa
+        st.dataframe(
+            st.session_state["df_resultado"],
+            use_container_width=True,
+            column_config={
+                "Portal PGMEI": st.column_config.LinkColumn("Portal PGMEI (DAS)", display_text="Abrir PGMEI ↗"),
+                "Enquadramento MEI": st.column_config.LinkColumn("Enquadramento MEI", display_text="Abrir Enquadramento ↗")
+            }
+        )
         
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.markdown(
-                '<a href="https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/" target="_blank">'
-                '<button style="background-color:#004834;color:white;padding:10px 10px;border:none;border-radius:5px;cursor:pointer;font-weight:bold;width:100%;font-size:13px;">Portal PGMEI (DAS) ↗</button>'
-                '</a>',
-                unsafe_allow_html=True
-            )
-        with col2:
-            st.markdown(
-                '<a href="https://www8.receita.fazenda.gov.br/SimplesNacional/Servicos/Grupo.aspx?grp=1" target="_blank">'
-                '<button style="background-color:#004834;color:white;padding:10px 10px;border:none;border-radius:5px;cursor:pointer;font-weight:bold;width:100%;font-size:13px;">Enquadramento MEI ↗</button>'
-                '</a>',
-                unsafe_allow_html=True
-            )
-        with col3:
-            st.markdown(
-                '<a href="https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/dasnsimei.app/" target="_blank">'
-                '<button style="background-color:#004834;color:white;padding:10px 10px;border:none;border-radius:5px;cursor:pointer;font-weight:bold;width:100%;font-size:13px;">DASN-SIMEI ↗</button>'
-                '</a>',
-                unsafe_allow_html=True
-            )
-        with col4:
-            st.markdown(
-                '<a href="https://solucoes.receita.fazenda.gov.br/servicos/cnpjreva/cnpjreva_solicitacao.asp" target="_blank">'
-                '<button style="background-color:#004834;color:white;padding:10px 10px;border:none;border-radius:5px;cursor:pointer;font-weight:bold;width:100%;font-size:13px;">Consulta CNPJ ↗</button>'
-                '</a>',
-                unsafe_allow_html=True
-            )
-
         st.markdown("---")
         
         output = io.BytesIO()
@@ -145,8 +112,8 @@ if uploaded_file:
             st.session_state["df_resultado"].to_excel(writer, index=False)
             
         st.download_button(
-            label="📥 Baixar Planilha com Relatório e Links (.xlsx)",
+            label="📥 Baixar Planilha Completa (.xlsx)",
             data=output.getvalue(),
-            file_name="relatorio_mei_auditoria.xlsx",
+            file_name="relatorio_mei_links.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )

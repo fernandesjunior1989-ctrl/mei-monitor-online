@@ -1,6 +1,1 @@
-streamlit
-pandas
-openpyxl
-playwright
-twocaptcha
-requests
+

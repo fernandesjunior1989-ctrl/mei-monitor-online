@@ -48,7 +48,7 @@ if st.button("Iniciar Processamento", type="primary"):
             página = browser.new_page()
 
             para idx, linha em df.iterrows():
-                cnpj_limpo = "..join(filtro(str.isdigit, strow["CNPJ")))
+              cnpj_limpo = "".join(filter(str.isdigit, str(row["CNPJ"])))
                 se não cnpj_limpo:
                     continuar
 

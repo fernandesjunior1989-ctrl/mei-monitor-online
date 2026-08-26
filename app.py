@@ -1,119 +1,129 @@
 import io
+import os
+import subprocess
 import time
 import pandas as pd
-import requests
 import streamlit as st
+
+# Tenta garantir a instalação do binário do navegador na primeira execução em nuvem
+try:
+    import playwright
+    subprocess.run(["playwright", "install", "chromium"], capture_output=True)
+except Exception:
+    pass
+
+from playwright.sync_api import sync_playwright
+from twocaptcha import TwoCaptcha
 
 st.set_page_config(page_title="MEI Monitor Online", page_icon="📊", layout="wide")
 
-st.title("MEI Monitor — Auditoria e Links de Consulta")
-st.write("Envie sua planilha de CNPJs para auditar o enquadramento e acessar rapidamente os portais de consulta.")
+st.title("MEI Monitor — Consulta Automatizada de DAS, DASN-SIMEI e CNPJ")
+st.write("Envie sua planilha contendo os CNPJs e informe sua chave do 2Captcha para realizar a varredura automática.")
 
-uploaded_file = st.file_uploader("Selecione sua planilha de CNPJs (.xlsx)", type=["xlsx"])
+uploaded_file = st.file_uploader("Selecione a planilha de CNPJs (.xlsx)", type=["xlsx"])
+api_key = st.text_input("Chave API do 2Captcha", type="password")
 
-if uploaded_file:
-    df = pd.read_excel(uploaded_file, dtype={"CNPJ": str})
-    
-    if st.button("Gerar Relatório com CNPJs e Links", type="primary"):
-        with st.spinner("Processando os dados..."):
-            
-            resultados = []
-            
+if st.button("Iniciar Varredura Automatizada", type="primary"):
+    if not uploaded_file:
+        st.error("Envie uma planilha Excel com os CNPJs.")
+    elif not api_key:
+        st.error("Informe a chave do 2Captcha para contornar o captcha do portal.")
+    else:
+        st.info("Iniciando robô de automação no portal do Simples Nacional...")
+        
+        df = pd.read_excel(uploaded_file, dtype={"CNPJ": str})
+        
+        # Garante as colunas de resposta
+        colunas_retorno = ["Status Execução", "Situação do CNPJ", "Situação das DAS (Aberto/Em dia)", "DASN-SIMEI (Entregue/Pendente)"]
+        for col in colunas_retorno:
+            if col not in df.columns:
+                df[col] = ""
+
+        total = len(df)
+        barra_progresso = st.progress(0)
+        status_texto = st.empty()
+        solver = TwoCaptcha(api_key)
+
+        with sync_playwright() as p:
+            # Inicializa o navegador em modo headless otimizado para servidores
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+            )
+            page = browser.new_page()
+
             for idx, row in df.iterrows():
-                nome_empresa = row.get("Nome da Empresa", f"Empresa {idx + 1}")
-                cnpj_raw = str(row.get("CNPJ", ""))
-                
-                # Corrige zeros à esquerda e garante 14 dígitos
-                cnpj_limpo = "".join(filter(str.isdigit, cnpj_raw)).zfill(14)
+                cnpj_limpo = "".join(filter(str.isdigit, str(row.get("CNPJ", "")))).zfill(14)
                 
                 if len(cnpj_limpo) != 14:
-                    resultados.append({
-                        "Nome da Empresa": nome_empresa,
-                        "CNPJ": cnpj_raw,
-                        "Situação Cadastral": "CNPJ Inválido",
-                        "SIMEI": "Inválido",
-                        "Portal PGMEI": "Link Oficial",
-                        "Enquadramento MEI": "Link Oficial"
-                    })
+                    df.at[idx, "Status Execução"] = "CNPJ Inválido"
                     continue
-                
-                # Formatação visual do CNPJ
-                cnpj_fmt = f"{cnpj_limpo[:2]}.{cnpj_limpo[2:5]}.{cnpj_limpo[5:8]}/{cnpj_limpo[8:12]}-{cnpj_limpo[12:]}"
-                
-                try:
-                    url = f"https://brasilapi.com.br/api/cnpj/v1/{cnpj_limpo}"
-                    resp = requests.get(url, timeout=8)
-                    
-                    if resp.status_code == 200:
-                        dados = resp.json()
-                        situacao = dados.get("descricao_situacao_cadastral", "Ativa")
-                        opcao_simei = dados.get("opcao_pelo_simei")
-                        data_exclusao = dados.get("data_exclusao_do_simei")
-                        
-                        if opcao_simei is True:
-                            status_simei = "Enquadrado (Ativo)"
-                        else:
-                            status_simei = "⚠️ DESENQUADRADO"
-                            
-                        if data_exclusao:
-                            status_simei = f"⚠️ Excluído em {data_exclusao}"
-                            
-                        resultados.append({
-                            "Nome da Empresa": nome_empresa,
-                            "CNPJ": cnpj_fmt,
-                            "Situação Cadastral": situacao,
-                            "SIMEI": status_simei,
-                            "Portal PGMEI": "https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/",
-                            "Enquadramento MEI": "https://www8.receita.fazenda.gov.br/SimplesNacional/Servicos/Grupo.aspx?grp=1"
-                        })
-                    else:
-                        resultados.append({
-                            "Nome da Empresa": nome_empresa,
-                            "CNPJ": cnpj_fmt,
-                            "Situação Cadastral": "Não encontrado",
-                            "SIMEI": "-",
-                            "Portal PGMEI": "",
-                            "Enquadramento MEI": ""
-                        })
-                except Exception:
-                    resultados.append({
-                        "Nome da Empresa": nome_empresa,
-                        "CNPJ": cnpj_fmt,
-                        "Situação Cadastral": "Erro de conexão",
-                        "SIMEI": "-",
-                        "Portal PGMEI": "",
-                        "Enquadramento MEI": ""
-                    })
-                
-                time.sleep(0.2)
-                
-            df_resultado = pd.DataFrame(resultados)
-            st.session_state["df_resultado"] = df_resultado
-            st.success("Relatório gerado com sucesso!")
 
-    if "df_resultado" in st.session_state:
-        st.subheader("📋 Tabela de Empresas e Links Oficiais")
-        st.write("Copie o CNPJ da empresa desejada e clique nos links oficiais para consulta:")
-        
-        # Exibe a tabela interativa
-        st.dataframe(
-            st.session_state["df_resultado"],
-            use_container_width=True,
-            column_config={
-                "Portal PGMEI": st.column_config.LinkColumn("Portal PGMEI (DAS)", display_text="Abrir PGMEI ↗"),
-                "Enquadramento MEI": st.column_config.LinkColumn("Enquadramento MEI", display_text="Abrir Enquadramento ↗")
-            }
-        )
-        
-        st.markdown("---")
-        
+                status_texto.text(f"Consultando CNPJ {idx + 1} de {total}: {cnpj_limpo}")
+
+                try:
+                    # Acessa o portal PGMEI oficial
+                    page.goto("https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/", wait_until="domcontentloaded", timeout=60000)
+                    
+                    # Preenche o CNPJ
+                    page.wait_for_selector("#cnpj, input[name='cnpj']", timeout=15000)
+                    page.fill("#cnpj, input[name='cnpj']", cnpj_limpo)
+
+                    # Resolução automática do reCAPTCHA via 2Captcha
+                    captcha_elem = page.wait_for_selector("[data-sitekey]", timeout=15000)
+                    sitekey = captcha_elem.get_attribute("data-sitekey")
+
+                    res = solver.recaptcha(sitekey=sitekey, url=page.url)
+                    token = res["code"]
+
+                    # Injeta o token do captcha na página
+                    page.evaluate(f"""
+                        let el = document.getElementById('g-recaptcha-response') || document.querySelector('[name="g-recaptcha-response"]');
+                        if (el) {{ el.value = '{token}'; el.innerHTML = '{token}'; }}
+                    """)
+
+                    # Avança na consulta
+                    page.click("button[type='submit'], input[type='submit'], #btnContinuar")
+                    
+                    # Aguarda carregar o painel interno do CNPJ
+                    page.wait_for_selector("text=Emitir Guia de Pagamento (DAS), text=Consulta, text=Extrato", timeout=20000)
+                    
+                    conteudo_pagina = page.inner_text("body").lower()
+                    
+                    # Extração automática dos estados solicitados
+                    df.at[idx, "Situação do CNPJ"] = "Ativo / Regular" if "ativo" in conteudo_pagina or "emitir guia" in conteudo_pagina else "Verificar Situação"
+                    
+                    if "débito" in conteudo_pagina or "pendência" in conteudo_pagina or "em aberto" in conteudo_pagina:
+                        df.at[idx, "Situação das DAS (Aberto/Em dia)"] = "⚠️ Possui DAS em Aberto / Pendências"
+                    else:
+                        df.at[idx, "Situação das DAS (Aberto/Em dia)"] = "Em dia (Sem débitos aparentes)"
+                        
+                    if "dasn" in conteudo_pagina and ("pendente" in conteudo_pagina or "em falta" in conteudo_pagina):
+                        df.at[idx, "DASN-SIMEI (Entregue/Pendente)"] = "⚠️ DASN-SIMEI Pendente"
+                    else:
+                        df.at[idx, "DASN-SIMEI (Entregue/Pendente)"] = "Regular / Entregue"
+
+                    df.at[idx, "Status Execução"] = "Sucesso"
+
+                except Exception as err:
+                    df.at[idx, "Status Execução"] = f"Erro na automação: {str(err)[:40]}"
+
+                barra_progresso.progress((idx + 1) / total)
+                time.sleep(1)
+
+            browser.close()
+
+        status_texto.text("Varredura automatizada concluída!")
+        st.success("Todas as consultas de DAS, DASN-SIMEI e situação foram finalizadas!")
+
+        # Disponibiliza o relatório em Excel para download
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            st.session_state["df_resultado"].to_excel(writer, index=False)
-            
+            df.to_excel(writer, index=False)
+        
         st.download_button(
-            label="📥 Baixar Planilha Completa (.xlsx)",
+            label="📥 Baixar Relatório Automatizado Completo (.xlsx)",
             data=output.getvalue(),
-            file_name="relatorio_mei_links.xlsx",
+            file_name="resultado_automacao_mei.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )

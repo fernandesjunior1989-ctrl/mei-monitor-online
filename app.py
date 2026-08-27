@@ -44,7 +44,8 @@ if uploaded_file:
                             "Simples Nacional": "-",
                             "SIMEI (MEI)": "-",
                             "DASN-SIMEI": "Verificar",
-                            "Guias DAS 2026": "Verificar"
+                            "Guias DAS 2026": "Verificar",
+                            "Portal PGMEI": ""
                         })
                         continue
                     
@@ -60,10 +61,12 @@ if uploaded_file:
                             situacao = dados.get("descricao_situacao_cadastral", "Ativa")
                             data_sit = dados.get("data_situacao_cadastral", "")
                             
+                            # Simples Nacional e SIMEI
                             optante_simples = dados.get("opcao_pelo_simples")
                             optante_simei = dados.get("opcao_pelo_simei")
                             data_exclusao_simei = dados.get("data_exclusao_do_simei")
                             
+                            # Formatação do Simples Nacional
                             if optante_simples is True:
                                 txt_simples = "Optante"
                             elif optante_simples is False:
@@ -71,6 +74,7 @@ if uploaded_file:
                             else:
                                 txt_simples = "Não informado"
                                 
+                            # Formatação do SIMEI (MEI)
                             if optante_simei is True:
                                 txt_simei = "Optante SIMEI (Ativo como MEI)"
                             else:
@@ -79,6 +83,8 @@ if uploaded_file:
                             if data_exclusao_simei:
                                 txt_simei = f"⚠️ Excluído em {data_exclusao_simei}"
                                 
+                            link_pgmei = "https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/"
+                            
                             resultados.append({
                                 "CNPJ": cnpj_fmt,
                                 "Razão Social": razao,
@@ -86,7 +92,8 @@ if uploaded_file:
                                 "Simples Nacional": txt_simples,
                                 "SIMEI (MEI)": txt_simei,
                                 "DASN-SIMEI": "Regular / Conferir",
-                                "Guias DAS 2026": "Em dia / Conferir"
+                                "Guias DAS 2026": "Em dia / Conferir",
+                                "Portal PGMEI": link_pgmei
                             })
                         else:
                             resultados.append({
@@ -96,7 +103,8 @@ if uploaded_file:
                                 "Simples Nacional": "-",
                                 "SIMEI (MEI)": "-",
                                 "DASN-SIMEI": "-",
-                                "Guias DAS 2026": "-"
+                                "Guias DAS 2026": "-",
+                                "Portal PGMEI": ""
                             })
                     except Exception:
                         resultados.append({
@@ -106,7 +114,8 @@ if uploaded_file:
                             "Simples Nacional": "-",
                             "SIMEI (MEI)": "-",
                             "DASN-SIMEI": "-",
-                            "Guias DAS 2026": "-"
+                            "Guias DAS 2026": "-",
+                            "Portal PGMEI": ""
                         })
                     
                     time.sleep(0.15)
@@ -116,48 +125,17 @@ if uploaded_file:
 
     if "df_resultado_completo" in st.session_state:
         st.subheader("📋 Relatório Consolidado")
-        st.write("Verifique abaixo os dados obtidos. Você pode ajustar os status fiscais diretamente na tabela:")
+        st.write("Verifique abaixo os dados públicos obtidos diretamente da Receita Federal. Você pode ajustar diretamente na tabela qualquer observação antes de baixar o relatório final.")
         
         df_editado = st.data_editor(
             st.session_state["df_resultado_completo"],
             use_container_width=True,
-            num_rows="fixed"
+            num_rows="fixed",
+            column_config={
+                "Portal PGMEI": st.column_config.LinkColumn("Portal PGMEI", display_text="Acessar PGMEI ↗")
+            }
         )
         
-        st.markdown("---")
-        st.subheader("🔗 Links para Consulta Manual (Portais Oficiais)")
-        st.write("Utilize os atalhos abaixo para acessar diretamente os portais de auditoria quando necessário:")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.markdown(
-                '<a href="https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/" target="_blank">'
-                '<button style="background-color:#004834;color:white;padding:10px;border:none;border-radius:5px;cursor:pointer;font-weight:bold;width:100%;font-size:12px;">Portal PGMEI (DAS) ↗</button>'
-                '</a>',
-                unsafe_allow_html=True
-            )
-        with col2:
-            st.markdown(
-                '<a href="https://www8.receita.fazenda.gov.br/SimplesNacional/Servicos/Grupo.aspx?grp=1" target="_blank">'
-                '<button style="background-color:#004834;color:white;padding:10px;border:none;border-radius:5px;cursor:pointer;font-weight:bold;width:100%;font-size:12px;">Enquadramento MEI ↗</button>'
-                '</a>',
-                unsafe_allow_html=True
-            )
-        with col3:
-            st.markdown(
-                '<a href="https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/dasnsimei.app/" target="_blank">'
-                '<button style="background-color:#004834;color:white;padding:10px;border:none;border-radius:5px;cursor:pointer;font-weight:bold;width:100%;font-size:12px;">DASN-SIMEI ↗</button>'
-                '</a>',
-                unsafe_allow_html=True
-            )
-        with col4:
-            st.markdown(
-                '<a href="https://solucoes.receita.fazenda.gov.br/servicos/cnpjreva/cnpjreva_solicitacao.asp" target="_blank">'
-                '<button style="background-color:#004834;color:white;padding:10px;border:none;border-radius:5px;cursor:pointer;font-weight:bold;width:100%;font-size:12px;">Consulta CNPJ RFB ↗</button>'
-                '</a>',
-                unsafe_allow_html=True
-            )
-
         st.markdown("---")
         
         output = io.BytesIO()

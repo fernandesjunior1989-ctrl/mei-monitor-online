@@ -193,7 +193,6 @@ def processar_lote_automatico(df, coluna_cnpj):
             resultados.append({
                 "Nome da Empresa": nome,
                 "CNPJ": str(cnpj_raw),
-                "CNPJ Limpo": "",
                 "Telefone": telefone,
                 "Email": email,
                 "Status SIMEI": "CNPJ INVÁLIDO",
@@ -208,7 +207,6 @@ def processar_lote_automatico(df, coluna_cnpj):
             registro = {
                 "Nome da Empresa": nome,
                 "CNPJ": formatar_cnpj_display(cnpj_limpo),
-                "CNPJ Limpo": cnpj_limpo,
                 "Telefone": telefone,
                 "Email": email,
             }
@@ -236,7 +234,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.write("Importe sua planilha no modelo padrão (com as colunas **Nome da Empresa**, **CNPJ**, **Telefone** e **Email**) para que o sistema execute as consultas automatizadas em lote.")
+st.write("Importe sua planilha no modelo padrão contendo as colunas **Nome da Empresa**, **CNPJ**, **Telefone** e **Email** para que o sistema execute as consultas automatizadas em lote.")
 
 # ============================================================
 # ENTRADA DE DADOS
@@ -296,7 +294,7 @@ if "df_resultado" in st.session_state:
         dados.to_excel(writer, index=False, sheet_name="MEIS ATIVOS")
 
     st.download_button(
-        "📥 Baixar Relatório Completo em Excel (Modelo Padrão)",
+        "📥 Baixar Relatório Completo em Excel",
         data=output.getvalue(),
         file_name="MEI_Monitor_Retorno_" + datetime.now().strftime("%Y%m%d_%H%M") + ".xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

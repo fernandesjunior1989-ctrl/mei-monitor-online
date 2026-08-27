@@ -31,6 +31,8 @@ if uploaded_file:
             with st.spinner("Consultando dados cadastrais e fiscais na base federal..."):
                 
                 resultados = []
+                total_linhas = len(df)
+                barra_progresso = st.progress(0)
                 
                 for idx, row in df.iterrows():
                     cnpj_raw = str(row.get(coluna_cnpj, ""))
@@ -47,6 +49,7 @@ if uploaded_file:
                             "Guias DAS 2026": "Verificar",
                             "Portal PGMEI": ""
                         })
+                        barra_progresso.progress((idx + 1) / total_linhas)
                         continue
                     
                     cnpj_fmt = f"{cnpj_limpo[:2]}.{cnpj_limpo[2:5]}.{cnpj_limpo[5:8]}/{cnpj_limpo[8:12]}-{cnpj_limpo[12:]}"
@@ -119,6 +122,7 @@ if uploaded_file:
                         })
                     
                     time.sleep(0.15)
+                    barra_progresso.progress((idx + 1) / total_linhas)
                     
                 st.session_state["df_resultado_completo"] = pd.DataFrame(resultados)
                 st.success("Consulta executada com sucesso!")

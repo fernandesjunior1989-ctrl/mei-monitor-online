@@ -61,15 +61,22 @@ if uploaded_file:
                             situacao = dados.get("descricao_situacao_cadastral", "Ativa")
                             data_sit = dados.get("data_situacao_cadastral", "")
                             
-                            # SIMEI e Desenquadramento com base no portal oficial
+                            # SIMEI e Desenquadramento (Lógica mais robusta)
                             optante_simei = dados.get("opcao_pelo_simei")
+                            data_opcao_simei = dados.get("data_opcao_pelo_simei")
                             data_exclusao_simei = dados.get("data_exclusao_do_simei")
                             
-                            if optante_simei is True and not data_exclusao_simei:
+                            # Considera regular se optante_simei for True OU se houver data de opção válida sem exclusão
+                            tem_opcao_simei = (optante_simei is True) or (data_opcao_simei not in [None, "", "None"])
+                            
+                            if tem_opcao_simei and (data_exclusao_simei in [None, "", "None"]):
                                 txt_simei = "Regular"
                             else:
-                                if data_exclusao_simei and "2027" in str(data_exclusao_simei):
-                                    txt_simei = "Desenquadrada 2027"
+                                if data_exclusao_simei not in [None, "", "None"]:
+                                    if "2027" in str(data_exclusao_simei):
+                                        txt_simei = "Desenquadrada 2027"
+                                    else:
+                                        txt_simei = "Desenquadrada"
                                 else:
                                     txt_simei = "Desenquadrada"
                                 

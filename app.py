@@ -1,218 +1,190 @@
 import io
 import re
 import time
-import random  # <--- IMPORTANTE: Adicione esta linha no topo
+import urllib.parse
 from datetime import datetime
 
 import pandas as pd
 import requests
 import streamlit as st
-from bs4 import BeautifulSoup
-
 
 # ============================================================
 # CONFIGURAÇÃO
 # ============================================================
 
 st.set_page_config(
-    page_title="MEI Monitor V2 — Anti-Bloqueio",
+    page_title="MEI Monitor — Auditoria Gratuita e Links Rápidos",
     page_icon="📊",
     layout="wide"
 )
 
-CONSOPT_URL = (
-    "https://consopt.www8.receita.fazenda.gov.br/"
-    "consultaoptantes"
-)
+# URLs dos Portais Oficiais (Para os links manuais)
+CONSOPT_URL_BASE = "https://consopt.www8.receita.fazenda.gov.br/consultaoptantes/Resultado"
+PGMEI_URL_BASE = "https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/EmissaoDocumento"
+DASN_URL_BASE = "https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/dasnsimei.app/Declaracao"
 
-PGMEI_URL = (
-    "https://www8.receita.fazenda.gov.br/"
-    "SimplesNacional/Aplicacoes/ATSPO/"
-    "pgmei.app/Identificacao"
-)
-
-DASN_URL = (
-    "https://www8.receita.fazenda.gov.br/"
-    "SimplesNacional/Aplicacoes/ATSPO/"
-    "dasnsimei.app/Identificacao"
-)
-
-TIMEOUT = 20
-
+TIMEOUT = 10
 
 # ============================================================
 # FUNÇÕES AUXILIARES
 # ============================================================
 
 def limpar_cnpj(valor):
-    if pd.isna(valor):
-        return ""
+    if pd.isna(valor): return ""
     cnpj = re.sub(r"\D", "", str(valor))
-    if len(cnpj) != 14:
-        return ""
-    return cnpj
+    return cnpj if len(cnpj) == 14 else ""
 
-def formatar_cnpj(cnpj):
-    if len(cnpj) != 14:
-        return cnpj
-    return (
-        f"{cnpj[:2]}.{cnpj[2:5]}."
-        f"{cnpj[5:8]}/{cnpj[8:12]}-{cnpj[12:]}"
-    )
+def formatar_cnpj_display(cnpj):
+    if len(cnpj) != 14: return cnpj
+    return f"{cnpj[:2]}.{cnpj[2:5]}.{cnpj[5:8]}/{cnpj[8:12]}-{cnpj[12:]}"
 
-def agora():
-    return datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-
-def classificar_status(simei, das, dasn):
-    valores = [
-        str(simei).upper(),
-        str(das).upper(),
-        str(dasn).upper()
-    ]
-    texto = " ".join(valores)
-
-    if "ERRO NA CONSULTA — CAPTCHA" in texto:
-        return "🔵 BLOQUEIO P/ CAPTCHA"
-    if "ERRO" in texto:
-        return "🔵 ERRO NA CONSULTA"
-    if "REQUER AUTENTICAÇÃO" in texto:
-        return "⚫ NÃO ANALISADO"
-    if "PENDENTE" in texto or "EM ABERTO" in texto:
-        return "🔴 IRREGULAR"
-    if (
-        "CONFIRMADO" in str(simei).upper()
-        and "OK" in str(das).upper()
-        and "OK" in str(dasn).upper()
-    ):
-        return "🟢 REGULAR"
-    if "NÃO OPTANTE" in str(simei).upper():
-        return "🔴 IRREGULAR"
-    return "🟡 ATENÇÃO"
-
+def gerar_links_receita(cnpj):
+    """Gera links com o CNPJ pré-preenchido para consulta manual."""
+    cnpj_enc = urllib.parse.quote(cnpj)
+    return {
+        "Link Consulta Optantes": f"{CONSOPT_URL_BASE}?cnpj={cnpj_enc}",
+        "Link PGMEI (DAS)": f"{PGMEI_URL_BASE}?cnpj={cnpj_enc}",
+        "Link DASN-SIMEI": f"{DASN_URL_BASE}?cnpj={cnpj_enc}"
+    }
 
 # ============================================================
-# CONSULTA OFICIAL — CONSULTA OPTANTES
+# CONSULTA GRATUITA E LEVE (Via BrasilAPI)
 # ============================================================
 
-def consultar_consopt(cnpj):
-    resultado = {
-        "status": "⚫ NÃO ANALISADO",
-        "detalhes": "",
-        "fonte": CONSOPT_URL
+def consultar_brasilapi_mei(cnpj_limpo):
+    """
+    Consulta a API pública da BrasilAPI para obter situação do CNPJ e SIMEI.
+    Retorna um dicionário com o status interpretado.
+    """
+    url = f"https://brasilapi.com.br/api/cnpj/v1/{cnpj_limpo}"
+    
+    base_resultado = {
+        "Status SIMEI": "⚫ NÃO ANALISADO",
+        "Detalhes SIMEI": "Erro na consulta",
+        "Situação Cadastral": "Indeterminado",
+        "Status Consolidado": "⚫ NÃO ANALISADO"
     }
-    session = requests.Session()
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 Chrome/151 Safari/537.36"
-        )
-    }
+
     try:
-        response = session.get(
-            CONSOPT_URL,
-            headers=headers,
-            timeout=TIMEOUT
-        )
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-        texto = soup.get_text(" ", strip=True).upper()
-
-        if "CAPTCHA" in texto:
-            resultado["status"] = "🔵 ERRO NA CONSULTA — CAPTCHA"
-            resultado["detalhes"] = "A Receita solicitou validação humana."
-            return resultado
-
-        if "SIMEI" in texto:
-            if (
-                "OPTANTE PELO SIMEI" in texto
-                or "OPTANTE PELO SIMEI DESDE" in texto
-            ):
-                resultado["status"] = "🟢 SIMEI CONFIRMADO"
-                resultado["detalhes"] = "Resultado localizado no portal oficial."
-            elif (
-                "NÃO OPTANTE PELO SIMEI" in texto
-                or "NAO OPTANTE PELO SIMEI" in texto
-            ):
-                resultado["status"] = "🔴 NÃO OPTANTE / DESENQUADRADO"
-                resultado["detalhes"] = "Resultado localizado no portal oficial."
+        response = requests.get(url, timeout=TIMEOUT)
+        
+        if response.status_code == 200:
+            dados = response.json()
+            
+            # Interpretar Situação Cadastral
+            situacao = dados.get("descricao_situacao_cadastral", "").upper()
+            base_resultado["Situação Cadastral"] = situacao
+            
+            # Interpretar Optante pelo SIMEI
+            optante_simei = dados.get("opcao_pelo_simei")
+            data_exclusao = dados.get("data_exclusao_do_simei")
+            
+            if situacao != "ATIVA":
+                base_resultado["Status SIMEI"] = "🔴 CNPJ INATIVO/BAIXADO"
+                base_resultado["Detalhes SIMEI"] = f"Situação: {situacao}"
+                base_resultado["Status Consolidado"] = "🔴 IRREGULAR"
+                
+            elif optante_simei is True:
+                if data_exclusao:
+                    base_resultado["Status SIMEI"] = f"⚠️ EXCLUÍDO EM {data_exclusao}"
+                    base_resultado["Detalhes SIMEI"] = "Excluído do SIMEI"
+                    base_resultado["Status Consolidado"] = "🔴 IRREGULAR"
+                else:
+                    base_resultado["Status SIMEI"] = "🟢 OPTANTE SIMEI (Confirmado)"
+                    base_resultado["Detalhes SIMEI"] = "Empresa regular na base pública"
+                    base_resultado["Status Consolidado"] = "🟢 REGULAR"
+            
+            elif optante_simei is False:
+                base_resultado["Status SIMEI"] = "🔴 NÃO OPTANTE SIMEI"
+                base_resultado["Detalhes SIMEI"] = "Empresa não é MEI"
+                base_resultado["Status Consolidado"] = "🔴 IRREGULAR"
+            
             else:
-                resultado["status"] = "🟡 ATENÇÃO — RESULTADO NÃO INTERPRETADO"
-                resultado["detalhes"] = "A página foi acessada, mas o resultado precisa ser interpretado."
+                # Caso o campo da API retorne null ou outro valor inesperado
+                base_resultado["Status SIMEI"] = "🟡 STATUS SIMEI DESCONHECIDO"
+                base_resultado["Detalhes SIMEI"] = "Verificar manualmente"
+                base_resultado["Status Consolidado"] = "🟡 ATENÇÃO"
+
+            return base_resultado
+
+        elif response.status_code == 404:
+            base_resultado["Status SIMEI"] = "🔵 CNPJ NÃO LOCALIZADO"
+            base_resultado["Detalhes SIMEI"] = "Verificar CNPJ na Receita"
+            base_resultado["Status Consolidado"] = "⚫ NÃO ANALISADO"
+            return base_resultado
+            
         else:
-            resultado["status"] = "🟡 ATENÇÃO — RESULTADO NÃO LOCALIZADO"
+            # Erros 500, 502, etc. da BrasilAPI
+            base_resultado["Status SIMEI"] = f"🔵 ERRO NA API ({response.status_code})"
+            base_resultado["Detalhes SIMEI"] = "Servidor da BrasilAPI instável"
+            base_resultado["Status Consolidado"] = "⚫ NÃO ANALISADO"
+            return base_resultado
+
     except requests.RequestException as e:
-        resultado["status"] = "🔵 ERRO NA CONSULTA"
-        resultado["detalhes"] = str(e)
-    return resultado
+        # Erro de conexão (Timeouts, DNS, etc.)
+        base_resultado["Status SIMEI"] = "🔵 ERRO DE CONEXÃO"
+        base_resultado["Detalhes SIMEI"] = str(e)
+        base_resultado["Status Consolidado"] = "⚫ NÃO ANALISADO"
+        return base_resultado
 
 
-def consultar_pgmei(cnpj, cpf=None, codigo_acesso=None):
-    return {
-        "status": "🟡 CONSULTA AUTENTICADA PENDENTE",
-        "detalhes": "Credenciais informadas. Conector Playwright deve executar a consulta no PGMEI oficial.",
-        "fonte": PGMEI_URL
-    }
-
-def consultar_dasn(cnpj, cpf=None, codigo_acesso=None):
-    return {
-        "status": "🟡 CONSULTA AUTENTICADA PENDENTE",
-        "detalhes": "Credenciais informadas. Conector Playwright deve executar a consulta no portal oficial.",
-        "fonte": DASN_URL
-    }
-
-
-def consultar_mei(cnpj, cpf=None, codigo_acesso=None):
-    cnpj_limpo = limpar_cnpj(cnpj)
-    if not cnpj_limpo:
-        return {
-            "CNPJ": str(cnpj),
-            "CNPJ Limpo": "",
-            "Status SIMEI": "CNPJ INVÁLIDO",
-            "DAS": "NÃO ANALISADO",
-            "DASN-SIMEI": "NÃO ANALISADO",
-            "Status Consolidado": "⚫ NÃO ANALISADO",
-            "Última Consulta": agora()
-        }
-
-    consopt = consultar_consopt(cnpj_limpo)
-    pgmei = consultar_pgmei(cnpj_limpo, cpf, codigo_acesso)
-    dasn = consultar_dasn(cnpj_limpo, cpf, codigo_acesso)
-
-    status = classificar_status(
-        consopt["status"],
-        pgmei["status"],
-        dasn["status"]
-    )
-
-    return {
-        "CNPJ": formatar_cnpj(cnpj_limpo),
-        "CNPJ Limpo": cnpj_limpo,
-        "Status SIMEI": consopt["status"],
-        "Detalhes SIMEI": consopt["detalhes"],
-        "DAS": pgmei["status"],
-        "Detalhes DAS": pgmei["detalhes"],
-        "DASN-SIMEI": dasn["status"],
-        "Detalhes DASN": dasn["detalhes"],
-        "Status Consolidado": status,
-        "Última Consulta": agora()
-    }
+def consultar_lista_cnpj(df, coluna_cnpj):
+    resultados = []
+    total = len(df)
+    progresso_bar = st.progress(0)
+    
+    for i, linha in df.iterrows():
+        cnpj_raw = linha[coluna_cnpj]
+        nome = linha.get("Razão Social", linha.get("Nome da Empresa", ""))
+        
+        cnpj_limpo = limpar_cnpj(cnpj_raw)
+        
+        if not cnpj_limpo:
+            resultados.append({
+                "CNPJ": cnpj_raw,
+                "CNPJ Limpo": "",
+                "Status SIMEI": "CNPJ INVÁLIDO",
+                "Detalhes SIMEI": "Formato incorreto",
+                "Situação Cadastral": "Inválido",
+                "Status Consolidado": "⚫ NÃO ANALISADO",
+                "Link Consulta Optantes": "#",
+                "Link PGMEI (DAS)": "#",
+                "Link DASN-SIMEI": "#"
+            })
+        else:
+            # Consulta a BrasilAPI (Livre de CAPTCHA)
+            dados = consultar_brasilapi_mei(cnpj_limpo)
+            
+            # Adiciona os links diretos para consulta manual
+            links = gerar_links_receita(cnpj_limpo)
+            dados.update(links)
+            
+            # Adiciona CNPJ formatado e nome
+            final_data = {
+                "CNPJ": formatar_cnpj_display(cnpj_limpo),
+                "CNPJ Limpo": cnpj_limpo,
+                "Nome / Razão Social": nome
+            }
+            final_data.update(dados)
+            
+            resultados.append(final_data)
+            progresso_bar.progress(int(((i + 1) / total) * 100))
+            
+            # Pausa leve para não sobrecarregar a API pública
+            time.sleep(0.2)
+            
+    return pd.DataFrame(resultados)
 
 
 # ============================================================
 # INTERFACE
 # ============================================================
 
-st.title("MEI Monitor V2 — Sistema Anti-Bloqueio p/ Lotes")
-st.caption("Consultas baseadas nos portais oficiais do Simples Nacional / Receita Federal.")
-st.warning("O sistema opera em lotes pequenos com pausas de descanso para evitar bloqueios da Receita Federal.")
+st.title("MEI Monitor — Auditoria Gratuita e Links Rápidos")
+st.caption("Consultas baseadas em bases públicas (BrasilAPI) e links diretos para os portais oficiais.")
+st.warning("Esta versão utiliza auditoria leve e fornece os links para a verificação manual de DAS e DASN nos portais da Receita Federal.")
 
-with st.expander("Dados de acesso para consultas autenticadas", expanded=False):
-    st.write("Utilize somente credenciais autorizadas pelo responsável pelo CNPJ.")
-    cpf_padrao = st.text_input("CPF do responsável", type="password")
-    codigo_padrao = st.text_input("Código de acesso", type="password")
-    st.info("Esses dados não devem ser armazenados em planilhas de saída.")
-
-arquivo = st.file_uploader("Importe a planilha de CNPJs", type=["xlsx", "xls"])
+arquivo = st.file_uploader("Importe a planilha de CNPJs (coluna 'CNPJ')", type=["xlsx", "xls"])
 
 if arquivo:
     df = pd.read_excel(arquivo, dtype=str)
@@ -225,70 +197,12 @@ if arquivo:
         st.error("Não foi encontrada uma coluna contendo CNPJ.")
         st.stop()
     st.success(f"Coluna identificada: {coluna_cnpj}")
-    st.dataframe(df.head(20), use_container_width=True)
-
-
-    # ========================================================
-    # EXECUTAR EM LOTES
-    # ========================================================
-
-    if st.button("🔎 CONSULTAR MEIs EM LOTE (Automático)", type="primary"):
-
-        resultados = []
-        progresso_bar = st.progress(0)
-        total_geral = len(df)
-
-        # Defina o tamanho do minilote (QUANTOS POR VEZ)
-        TAMANHO_LOTE = 15 # <--- Ajuste aqui se quiser mais/menos por vez
-        
-        # Defina o tempo de pausa entre lotes (EM SEGUNDOS)
-        PAUSA_MIN = 30
-        PAUSA_MAX = 60
-
-        # Divide o DataFrame em pedaços (chunks)
-        total_lotes = (total_geral + TAMANHO_LOTE - 1) // TAMANHO_LOTE
-        
-        for lote_num, start_idx in enumerate(range(0, total_geral, TAMANHO_LOTE)):
-            end_idx = min(start_idx + TAMANHO_LOTE, total_geral)
-            df_lote = df.iloc[start_idx:end_idx]
-
-            info_lote = st.info(f"Processando Lote {lote_num + 1} de {total_lotes} (CNPJs {start_idx+1} a {end_idx})...")
-
-            for i, linha in df_lote.iterrows():
-                cnpj = linha[coluna_cnpj]
-                nome = linha.get("Razão Social", linha.get("Nome da Empresa", ""))
-
-                resultado = consultar_mei(cnpj, cpf_padrao, codigo_padrao)
-                resultado["Nome / Razão Social"] = nome
-                resultados.append(resultado)
-
-                # Atualiza a barra de progresso global
-                progresso_bar.progress(int(((i + 1) / total_geral) * 100))
-                
-                # Pausa curta entre cada CNPJ do lote (para não parecer ataque)
-                time.sleep(random.uniform(1.0, 2.5))
-
-            info_lote.empty() # Remove a info do lote atual
-
-            # Se não for o último lote, faça uma pausa longa e aleatória
-            if lote_num < total_lotes - 1:
-                pausa_atual = random.randint(PAUSA_MIN, PAUSA_MAX)
-                
-                # Exibe a contagem regressiva da pausa
-                msg_pausa = st.empty()
-                with msg_pausa.container():
-                    st.warning(f"✅ Lote {lote_num + 1} concluído. Descansando o sistema por **{pausa_atual} segundos** para evitar bloqueio...")
-                    
-                for seg in range(pausa_atual, 0, -1):
-                    with msg_pausa.container():
-                        st.warning(f"✅ Lote {lote_num + 1} concluído. Descansando o sistema por **{seg} segundos** para evitar bloqueio...")
-                    time.sleep(1)
-                msg_pausa.empty() # Remove a mensagem de pausa
-
-        df_resultado = pd.DataFrame(resultados)
+    
+    # Botão de Execução
+    if st.button("🔎 EXECUTAR AUDITORIA LEVE E GERAR LINKS", type="primary"):
+        df_resultado = consultar_lista_cnpj(df, coluna_cnpj)
         st.session_state["df_resultado"] = df_resultado
-        st.success("Consulta em lote concluída com sucesso!")
-
+        st.success("Auditoria leve concluída com sucesso!")
 
 # ============================================================
 # DASHBOARD
@@ -301,66 +215,33 @@ if "df_resultado" in st.session_state:
 
     total = len(dados)
     regulares = len(dados[dados["Status Consolidado"] == "🟢 REGULAR"])
-    atencao = len(dados[dados["Status Consolidado"] == "🟡 ATENÇÃO"])
     irregulares = len(dados[dados["Status Consolidado"] == "🔴 IRREGULAR"])
     nao_analisados = len(dados[dados["Status Consolidado"] == "⚫ NÃO ANALISADO"])
-    erros = len(dados[dados["Status Consolidado"] == "🔵 ERRO NA CONSULTA"])
-    bloqueios_captcha = len(dados[dados["Status Consolidado"] == "🔵 BLOQUEIO P/ CAPTCHA"])
 
-    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric("Total", total)
     c2.metric("🟢 Regulares", regulares)
-    c3.metric("🟡 Atenção", atencao)
-    c4.metric("🔴 Irregulares", irregulares)
-    c5.metric("⚫ Não analisados", nao_analisados)
-    c6.metric("🔵 Erros", erros)
-    c7.metric("🚫 Bloqueio Rec.", bloqueios_captcha, help="Número de vezes que a Receita exigiu validação humana.")
+    c3.metric("🔴 Irregulares (Inativos/Não MEI)", irregulares)
+    c4.metric("⚫ Não analisados (Erros de API)", nao_analisados)
+
+    st.divider()
+    st.subheader("Tabela de Resultado com Links")
+    st.write("Role para a direita para ver os links de auditoria manual.")
+    
+    # Exibe o dataframe, mas esconde os links no st.dataframe principal para ficar limpo
+    cols_to_show = [c for c in dados.columns if "Link" not in c]
+    st.dataframe(dados[cols_to_show], use_container_width=True, hide_index=True)
 
     st.divider()
 
-    filtro = st.selectbox(
-        "Filtrar situação",
-        [
-            "TODOS",
-            "🟢 REGULAR",
-            "🟡 ATENÇÃO",
-            "🔴 IRREGULAR",
-            "⚫ NÃO ANALISADO",
-            "🔵 ERRO NA CONSULTA",
-            "🔵 BLOQUEIO P/ CAPTCHA"
-        ]
-    )
-
-    exibicao = dados.copy()
-    if filtro != "TODOS":
-        exibicao = exibicao[exibicao["Status Consolidado"] == filtro]
-
-    st.dataframe(exibicao, use_container_width=True, hide_index=True)
-    st.divider()
-
+    # Exportação para Excel (Com os links)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        dados.to_excel(writer, index=False, sheet_name="Resultado")
+        dados.to_excel(writer, index=False, sheet_name="AuditoriaMEI")
 
     st.download_button(
-        "📥 Baixar relatório Excel",
+        "📥 Baixar relatório Excel (Com Links Diretos p/ Portais Oficiais)",
         data=output.getvalue(),
-        file_name="MEI_Monitor_" + datetime.now().strftime("%Y%m%d_%H%M") + ".xlsx",
+        file_name="MEI_Auditoria_Gratuita_" + datetime.now().strftime("%Y%m%d_%H%M") + ".xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
-
-# ============================================================
-# PORTAIS OFICIAIS
-# ============================================================
-
-st.divider()
-st.subheader("Portais oficiais")
-st.markdown(
-    f"""
-    - [Consulta Optantes]({CONSOPT_URL})
-    - [PGMEI]({PGMEI_URL})
-    - [DASN-SIMEI]({DASN_URL})
-    """
-)
-st.caption("Os resultados apresentados devem sempre identificar a fonte, data e hora da última consulta.")

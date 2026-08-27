@@ -7,7 +7,7 @@ import streamlit as st
 st.set_page_config(page_title="MEI Monitor — Consulta Fiscal Completa", page_icon="📊", layout="wide")
 
 st.title("MEI Monitor — Consulta Automatizada (CNPJ, SIMEI e Fiscais)")
-st.write("Envie sua planilha contendo apenas os **CNPJs**. O sistema fará a varredura automática nas bases públicas da Receita Federal, Simples Nacional e SIMEI.")
+st.write("Envie sua planilha contendo apenas os **CNPJs**. O sistema fará a varredura automática na base federal e disponibilizará os links diretos para conferência de guias e declarações.")
 
 uploaded_file = st.file_uploader("Selecione sua planilha de CNPJs (.xlsx)", type=["xlsx"])
 
@@ -28,7 +28,7 @@ if uploaded_file:
         st.success(f"Coluna de CNPJ identificada: **{coluna_cnpj}**")
         
         if st.button("Executar Consulta Completa", type="primary"):
-            with st.spinner("Consultando dados cadastrais e fiscais na base federal..."):
+            with st.spinner("Consultando dados cadastrais e SIMEI na base federal..."):
                 
                 resultados = []
                 total_linhas = len(df)
@@ -44,8 +44,8 @@ if uploaded_file:
                             "Razão Social": "CNPJ Inválido",
                             "Situação Cadastral": "Inválido",
                             "SITUAÇÃO SIMEI": "Desenquadrada",
-                            "GUIA DAS": "Em aberto",
-                            "DEC ANUAL": "Em aberto",
+                            "GUIA DAS": "A verificar",
+                            "DEC ANUAL": "A verificar",
                             "Portal PGMEI": ""
                         })
                         barra_progresso.progress((idx + 1) / total_linhas)
@@ -61,11 +61,10 @@ if uploaded_file:
                             situacao = dados.get("descricao_situacao_cadastral", "Ativa")
                             data_sit = dados.get("data_situacao_cadastral", "")
                             
-                            # Chaves corretas da base federal para SIMEI/MEI
+                            # Validação rigorosa do SIMEI
                             data_opcao_mei = dados.get("data_opcao_pelo_mei")
                             data_exclusao_mei = dados.get("data_exclusao_do_mei")
                             
-                            # Validação correta: Se tem data de opção e não tem data de exclusão, é Regular
                             if data_opcao_mei not in [None, "", "None"] and data_exclusao_mei in [None, "", "None"]:
                                 txt_simei = "Regular"
                             else:
@@ -117,7 +116,7 @@ if uploaded_file:
 
     if "df_resultado_completo" in st.session_state:
         st.subheader("📋 Relatório Consolidado")
-        st.write("Verifique abaixo os dados públicos obtidos diretamente da Receita Federal. Você pode ajustar diretamente na tabela qualquer observação antes de baixar o relatório final.")
+        st.write("Dica: Clique em **Acessar PGMEI** na linha correspondente para conferir rapidamente no portal oficial e ajuste diretamente na tabela os status de DAS ou Declaração Anual antes de baixar o relatório.")
         
         df_editado = st.data_editor(
             st.session_state["df_resultado_completo"],

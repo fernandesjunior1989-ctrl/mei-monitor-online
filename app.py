@@ -61,18 +61,17 @@ if uploaded_file:
                             situacao = dados.get("descricao_situacao_cadastral", "Ativa")
                             data_sit = dados.get("data_situacao_cadastral", "")
                             
-                            # SIMEI e Desenquadramento
+                            # SIMEI e Desenquadramento com base no portal oficial
                             optante_simei = dados.get("opcao_pelo_simei")
                             data_exclusao_simei = dados.get("data_exclusao_do_simei")
                             
-                            # Lógica para o campo de Situação SIMEI
                             if optante_simei is True and not data_exclusao_simei:
-                                txt_desenquadramento = "Regular"
+                                txt_simei = "Regular"
                             else:
                                 if data_exclusao_simei and "2027" in str(data_exclusao_simei):
-                                    txt_desenquadramento = "Desenquadrada 2027"
+                                    txt_simei = "Desenquadrada 2027"
                                 else:
-                                    txt_desenquadramento = "Desenquadrada"
+                                    txt_simei = "Desenquadrada"
                                 
                             link_pgmei = "https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/"
                             
@@ -80,7 +79,7 @@ if uploaded_file:
                                 "CNPJ": cnpj_limpo,
                                 "Razão Social": razao,
                                 "Situação Cadastral": f"{situacao} ({data_sit})",
-                                "SITUAÇÃO SIMEI": txt_desenquadramento,
+                                "SITUAÇÃO SIMEI": txt_simei,
                                 "GUIA DAS": "Regular",
                                 "DEC ANUAL": "Regular",
                                 "Portal PGMEI": link_pgmei

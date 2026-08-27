@@ -363,7 +363,7 @@ if arquivo:
 
     st.success(f"Coluna identificada: {coluna_cnpj}")
 
-    st.dataframe(df.head(20), use_container_width=True)
+    st.dataframe(df.head(20), use_container_width='stretch')
 
     if st.button("🔎 CONSULTAR MEIs AGORA", type="primary"):
 
@@ -431,7 +431,7 @@ if "df_resultado" in st.session_state:
     if filtro != "TODOS":
         exibicao = exibicao[exibicao["Status Consolidado"] == filtro]
 
-    st.dataframe(exibicao, use_container_width=True, hide_index=True)
+    st.dataframe(exibicao, use_container_width='stretch', hide_index=True)
 
     st.divider()
 

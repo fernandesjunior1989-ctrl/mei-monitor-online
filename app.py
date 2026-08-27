@@ -43,10 +43,9 @@ if uploaded_file:
                             "CNPJ": cnpj_raw,
                             "Razão Social": "CNPJ Inválido",
                             "Situação Cadastral": "Inválido",
-                            "Simples Nacional": "-",
-                            "SIMEI (MEI)": "-",
-                            "DASN-SIMEI": "Verificar",
-                            "Guias DAS 2026": "Verificar",
+                            "CONSULTAR DESENQUADRAMENTO": "Desenquadrada",
+                            "GUIA DAS": "Em aberto",
+                            "DEC ANUAL": "Em aberto",
                             "Portal PGMEI": ""
                         })
                         barra_progresso.progress((idx + 1) / total_linhas)
@@ -64,27 +63,18 @@ if uploaded_file:
                             situacao = dados.get("descricao_situacao_cadastral", "Ativa")
                             data_sit = dados.get("data_situacao_cadastral", "")
                             
-                            # Simples Nacional e SIMEI
-                            optante_simples = dados.get("opcao_pelo_simples")
+                            # SIMEI e Desenquadramento
                             optante_simei = dados.get("opcao_pelo_simei")
                             data_exclusao_simei = dados.get("data_exclusao_do_simei")
                             
-                            # Formatação do Simples Nacional
-                            if optante_simples is True:
-                                txt_simples = "Optante"
-                            elif optante_simples is False:
-                                txt_simples = "Não Optante"
+                            # Lógica para o campo de Desenquadramento SIMEI
+                            if optante_simei is True and not data_exclusao_simei:
+                                txt_desenquadramento = "Regular"
                             else:
-                                txt_simples = "Não informado"
-                                
-                            # Formatação do SIMEI (MEI)
-                            if optante_simei is True:
-                                txt_simei = "Optante SIMEI (Ativo como MEI)"
-                            else:
-                                txt_simei = "⚠️ Desenquadrado / Não Optante"
-                                
-                            if data_exclusao_simei:
-                                txt_simei = f"⚠️ Excluído em {data_exclusao_simei}"
+                                if data_exclusao_simei and "2027" in str(data_exclusao_simei):
+                                    txt_desenquadramento = "Desenquadrada 2027"
+                                else:
+                                    txt_desenquadramento = "Desenquadrada"
                                 
                             link_pgmei = "https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/"
                             
@@ -92,10 +82,9 @@ if uploaded_file:
                                 "CNPJ": cnpj_fmt,
                                 "Razão Social": razao,
                                 "Situação Cadastral": f"{situacao} ({data_sit})",
-                                "Simples Nacional": txt_simples,
-                                "SIMEI (MEI)": txt_simei,
-                                "DASN-SIMEI": "Regular / Conferir",
-                                "Guias DAS 2026": "Em dia / Conferir",
+                                "CONSULTAR DESENQUADRAMENTO": txt_desenquadramento,
+                                "GUIA DAS": "Regular",
+                                "DEC ANUAL": "Regular",
                                 "Portal PGMEI": link_pgmei
                             })
                         else:
@@ -103,10 +92,9 @@ if uploaded_file:
                                 "CNPJ": cnpj_fmt,
                                 "Razão Social": "Não localizado na base federal",
                                 "Situação Cadastral": "Inexistente",
-                                "Simples Nacional": "-",
-                                "SIMEI (MEI)": "-",
-                                "DASN-SIMEI": "-",
-                                "Guias DAS 2026": "-",
+                                "CONSULTAR DESENQUADRAMENTO": "Desenquadrada",
+                                "GUIA DAS": "Em aberto",
+                                "DEC ANUAL": "Em aberto",
                                 "Portal PGMEI": ""
                             })
                     except Exception:
@@ -114,10 +102,9 @@ if uploaded_file:
                             "CNPJ": cnpj_fmt,
                             "Razão Social": "Erro de conexão",
                             "Situação Cadastral": "Erro",
-                            "Simples Nacional": "-",
-                            "SIMEI (MEI)": "-",
-                            "DASN-SIMEI": "-",
-                            "Guias DAS 2026": "-",
+                            "CONSULTAR DESENQUADRAMENTO": "-",
+                            "GUIA DAS": "-",
+                            "DEC ANUAL": "-",
                             "Portal PGMEI": ""
                         })
                     
@@ -131,7 +118,6 @@ if uploaded_file:
         st.subheader("📋 Relatório Consolidado")
         st.write("Verifique abaixo os dados públicos obtidos diretamente da Receita Federal. Você pode ajustar diretamente na tabela qualquer observação antes de baixar o relatório final.")
         
-        # Alterado de use_container_width=True para width="stretch"
         df_editado = st.data_editor(
             st.session_state["df_resultado_completo"],
             width="stretch",

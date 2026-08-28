@@ -6,8 +6,8 @@ import streamlit as st
 
 st.set_page_config(page_title="MEI Monitor — Consulta Fiscal", page_icon="📊", layout="wide")
 
-st.title("MEI Monitor — Consulta Automatizada e Links de Acesso")
-st.write("Envie sua planilha de **CNPJs** para consultar os dados e gerar os links diretos para conferência nos portais da Receita Federal.")
+st.title("MEI Monitor — Consulta Automatizada e Ações Rápidas")
+st.write("Envie sua planilha de **CNPJs** para consultar os dados e acessar atalhos diretos via botões para cada empresa.")
 
 uploaded_file = st.file_uploader("Selecione sua planilha de CNPJs (.xlsx)", type=["xlsx"])
 
@@ -36,7 +36,6 @@ if uploaded_file:
                     cnpj_raw = str(row.get(coluna_cnpj, ""))
                     cnpj_limpo = "".join(filter(str.isdigit, cnpj_raw)).zfill(14)
                     
-                    # URLs para links de consulta manual
                     link_pgmei = "https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/pgmei.app/"
                     link_dasn = "https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/dasnsimei.app/"
                     link_simples_consulta = f"https://www8.receita.fazenda.gov.br/SimplesNacional/aplicacoes/atspo/consultaoptantes.app/ConsultarOpcao.aspx?cnpj={cnpj_limpo}"
@@ -50,10 +49,10 @@ if uploaded_file:
                             "SITUAÇÃO SIMEI": "Inválido",
                             "GUIA DAS": "Pendência Manual",
                             "DEC ANUAL": "Pendência Manual",
-                            "PGMEI (DAS)": link_pgmei,
-                            "DASN-SIMEI": link_dasn,
-                            "Consulta SIMEI": link_simples_consulta,
-                            "Cartão CNPJ": link_cartao_cnpj
+                            "link_pgmei": link_pgmei,
+                            "link_dasn": link_dasn,
+                            "link_simples": link_simples_consulta,
+                            "link_cartao": link_cartao_cnpj
                         })
                         barra_progresso.progress((idx + 1) / total_linhas)
                         continue
@@ -86,50 +85,36 @@ if uploaded_file:
                                 "SITUAÇÃO SIMEI": txt_simei,
                                 "GUIA DAS": "Conferir no PGMEI",
                                 "DEC ANUAL": "Conferir no PGMEI",
-                                "PGMEI (DAS)": link_pgmei,
-                                "DASN-SIMEI": link_dasn,
-                                "Consulta SIMEI": link_simples_consulta,
-                                "Cartão CNPJ": link_cartao_cnpj
+                                "link_pgmei": link_pgmei,
+                                "link_dasn": link_dasn,
+                                "link_simples": link_simples_consulta,
+                                "link_cartao": link_cartao_cnpj
                             })
-                        elif resp.status_code == 429:
-                            resultados.append({
-                                "CNPJ": cnpj_limpo,
-                                "Razão Social": "Limite de requisições excedido (429)",
-                                "Situação Cadastral": "Erro 429",
-                                "SITUAÇÃO SIMEI": "-",
-                                "GUIA DAS": "-",
-                                "DEC ANUAL": "-",
-                                "PGMEI (DAS)": link_pgmei,
-                                "DASN-SIMEI": link_dasn,
-                                "Consulta SIMEI": link_simples_consulta,
-                                "Cartão CNPJ": link_cartao_cnpj
-                            })
-                            time.sleep(1.0)
                         else:
                             resultados.append({
                                 "CNPJ": cnpj_limpo,
-                                "Razão Social": "Não localizado na base federal",
-                                "Situação Cadastral": "Inexistente",
-                                "SITUAÇÃO SIMEI": "Não Encontrado",
+                                "Razão Social": "Não localizado",
+                                "Situação Cadastral": "Erro/Inexistente",
+                                "SITUAÇÃO SIMEI": "-",
                                 "GUIA DAS": "-",
                                 "DEC ANUAL": "-",
-                                "PGMEI (DAS)": link_pgmei,
-                                "DASN-SIMEI": link_dasn,
-                                "Consulta SIMEI": link_simples_consulta,
-                                "Cartão CNPJ": link_cartao_cnpj
+                                "link_pgmei": link_pgmei,
+                                "link_dasn": link_dasn,
+                                "link_simples": link_simples_consulta,
+                                "link_cartao": link_cartao_cnpj
                             })
                     except Exception:
                         resultados.append({
                             "CNPJ": cnpj_limpo,
                             "Razão Social": "Erro de conexão",
-                            "Situação Cadastral": "Falha na Requisição",
+                            "Situação Cadastral": "Falha Requisição",
                             "SITUAÇÃO SIMEI": "-",
                             "GUIA DAS": "-",
                             "DEC ANUAL": "-",
-                            "PGMEI (DAS)": link_pgmei,
-                            "DASN-SIMEI": link_dasn,
-                            "Consulta SIMEI": link_simples_consulta,
-                            "Cartão CNPJ": link_cartao_cnpj
+                            "link_pgmei": link_pgmei,
+                            "link_dasn": link_dasn,
+                            "link_simples": link_simples_consulta,
+                            "link_cartao": link_cartao_cnpj
                         })
                     
                     time.sleep(0.2)
@@ -139,23 +124,47 @@ if uploaded_file:
                 st.success("Consulta finalizada com sucesso!")
 
     if "df_resultado_completo" in st.session_state:
-        st.subheader("📋 Relatório Consolidado e Links de Consulta")
-        st.info("Utilize os atalhos abaixo para acessar o portal correspondente a cada verificação manual.")
+        df_full = st.session_state["df_resultado_completo"]
+        
+        st.subheader("📋 Relatório Consolidado")
+        
+        # Exibe tabela formatada sem expor URLs brutas
+        colunas_exibicao = ["CNPJ", "Razão Social", "Situação Cadastral", "SITUAÇÃO SIMEI", "GUIA DAS", "DEC ANUAL"]
         
         df_editado = st.data_editor(
-            st.session_state["df_resultado_completo"],
+            df_full[colunas_exibicao],
             use_container_width=True,
             num_rows="fixed",
             column_config={
-                "PGMEI (DAS)": st.column_config.LinkColumn("Emitir DAS", display_text="PGMEI ↗"),
-                "DASN-SIMEI": st.column_config.LinkColumn("Declaração Anual", display_text="DASN ↗"),
-                "Consulta SIMEI": st.column_config.LinkColumn("Comprovante SIMEI", display_text="Optantes ↗"),
-                "Cartão CNPJ": st.column_config.LinkColumn("Comprovante CNPJ", display_text="Receita ↗"),
                 "GUIA DAS": st.column_config.SelectboxColumn("GUIA DAS", options=["Conferir no PGMEI", "Regular", "Em aberto", "Parcelado"]),
                 "DEC ANUAL": st.column_config.SelectboxColumn("DEC ANUAL", options=["Conferir no PGMEI", "Entregue", "Pendente"])
             }
         )
         
+        st.markdown("---")
+        
+        # Painel de Botões de Acesso Direto por Empresa
+        st.subheader("🔗 Central de Acesso Rápido por CNPJ")
+        st.caption("Selecione uma empresa da lista para liberar os botões diretos de consulta:")
+        
+        cnpjs_lista = df_full["CNPJ"].tolist()
+        cnpj_selecionado = st.selectbox("Selecione o CNPJ para acessar os portais:", cnpjs_lista)
+        
+        if cnpj_selecionado:
+            row_sel = df_full[df_full["CNPJ"] == cnpj_selecionado].iloc[0]
+            
+            st.markdown(f"**Empresa:** `{row_sel['Razão Social']}` | **CNPJ:** `{row_sel['CNPJ']}`")
+            
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.link_button("🌐 Emitir DAS (PGMEI)", row_sel["link_pgmei"], use_container_width=True)
+            with c2:
+                st.link_button("📄 Declaração Anual (DASN)", row_sel["link_dasn"], use_container_width=True)
+            with c3:
+                st.link_button("🔍 Comprovante SIMEI", row_sel["link_simples"], use_container_width=True)
+            with c4:
+                st.link_button("📜 Cartão CNPJ Receita", row_sel["link_cartao"], use_container_width=True)
+
         st.markdown("---")
         
         output = io.BytesIO()
